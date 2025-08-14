@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>samahikoGPT</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" />
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#111826; --panel-2:#0e1522;
+    --text:#e8eef7; --muted:#a5b4c3; --brand:#6ee7ff; --brand-2:#7c3aed;
+    --ok:#22c55e; --warn:#f59e0b; --error:#ef4444; --chip:#182235;
+    --bubble-user:#1f2a44; --bubble-bot:#0d1a2e; --border:#1c2536;
+    --shadow: 0 10px 30px rgba(0,0,0,.35), 0 1px 0 rgba(255,255,255,.03) inset;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background: radial-gradient(1200px 600px at 80% -10%, rgba(124,58,237,.15), transparent),
+               radial-gradient(800px 400px at -10% 20%, rgba(110,231,255,.07), transparent),
+               var(--bg);
+    color:var(--text); font: 14px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans JP", sans-serif;
+  }
+  .wrap{display:flex; flex-direction:column; min-height:100%}
+  header{
+    position:sticky; top:0; z-index:5; backdrop-filter: blur(8px);
+    background: linear-gradient(180deg, rgba(11,15,20,.85), rgba(11,15,20,.65));
+    border-bottom:1px solid var(--border);
+  }
+  .bar{max-width:1100px; margin:0 auto; padding:14px 18px; display:flex; align-items:center; gap:12px}
+  .logo{
+    width:36px; height:36px; border-radius:12px;
+    background: conic-gradient(from 210deg, var(--brand), var(--brand-2) 55%, #3b82f6 85%, var(--brand));
+    box-shadow: 0 4px 18px rgba(124,58,237,.45), 0 0 1px rgba(255,255,255,.35) inset;
+  }
+  .title{font-weight:700; letter-spacing:.2px; font-size:18px}
+  .ghost{margin-left:auto; display:flex; align-items:center; gap:8px}
+  .chip{padding:6px 10px; border:1px solid var(--border); background:var(--chip); color:var(--muted); border-radius:999px; font-size:12px}
+
+  main{flex:1; display:flex; justify-content:center}
+  .canvas{max-width:1100px; width:100%; display:grid; grid-template-columns: 1fr 320px; gap:16px; padding:18px}
+  @media (max-width: 960px){ .canvas{grid-template-columns: 1fr} }
+
+  .panel{
+    background: linear-gradient(180deg, var(--panel), var(--panel-2));
+    border:1px solid var(--border); border-radius:16px; box-shadow: var(--shadow);
+  }
+
+  /* Chat */
+  .chat{display:flex; flex-direction:column; height:72vh; min-height:520px}
+  .log{flex:1; overflow:auto; padding:16px; scroll-behavior:smooth}
+  .msg{display:flex; gap:10px; margin:10px 0; align-items:flex-start}
+  .avatar{width:32px; height:32px; border-radius:50%; background:#0b1220; display:grid; place-items:center; color:#9cc3ff; border:1px solid var(--border)}
+  .me .avatar{background:#172238; color:#7dd3fc}
+  .bubble{
+    max-width: 100%;
+    padding:12px 14px; border-radius:12px; border:1px solid var(--border);
+    white-space:pre-wrap; word-break:break-word;
+  }
+  .me .bubble{ background:var(--bubble-user)}
+  .bot .bubble{ background:var(--bubble-bot)}
+  .time{font-size:11px; color:var(--muted); margin-top:6px}
+
+  .composer{padding:12px; border-top:1px solid var(--border); display:grid; grid-template-columns: 1fr auto; gap:10px}
+  textarea{
+    width:100%; resize:none; min-height:48px; max-height:160px; padding:12px 14px;
+    color:var(--text); background:#0b1220; border:1px solid var(--border); border-radius:12px; outline:none;
+  }
+  .actions{display:flex; gap:8px; align-items:center}
+  .btn{
+    appearance:none; border:none; cursor:pointer; color:var(--text);
+    background: linear-gradient(180deg, #1b2a46, #111b2e);
+    border:1px solid var(--border); border-radius:12px; padding:10px 14px; font-weight:600;
+    transition: transform .06s ease, box-shadow .06s ease;
+  }
+  .btn:hover{ transform: translateY(-1px) }
+  .btn:active{ transform: translateY(0) scale(.98) }
+  .btn.primary{ background: linear-gradient(180deg, #1f3b7a, #182e60); border-color:#28407c }
+  .btn.ghost{ background: transparent }
+
+  /* Side */
+  .side{display:flex; flex-direction:column; gap:12px; height:72vh; min-height:520px}
+  .card{padding:14px}
+  .h{font-size:13px; font-weight:700; letter-spacing:.2px; color:#c2d2e8; margin-bottom:8px}
+  .row{display:flex; gap:8px; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px dashed rgba(255,255,255,.05)}
+  .row:last-child{border-bottom:none}
+  .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace; font-size:12px; color:#bcd1ff}
+  .status-dot{width:8px; height:8px; border-radius:999px; background:#64748b}
+  .status-dot.ok{background:var(--ok)} .status-dot.busy{background:var(--warn)} .status-dot.err{background:var(--error)}
+
+  /* Small helpers */
+  .fade-in{animation:fade .18s ease-out}
+  @keyframes fade{from{opacity:0; transform:translateY(4px)} to{opacity:1; transform:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="bar">
+      <div class="logo" aria-hidden="true"></div>
+      <div class="title">samahikoGPT</div>
+      <div class="ghost">
+        <span class="chip" id="model-chip">Model: loading…</span>
+        <span class="chip" id="cache-chip">Cache: –</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="canvas">
+      <!-- Chat -->
+      <section class="panel chat" aria-label="Chat interface">
+        <div class="log" id="log" role="log" aria-live="polite"></div>
+        <div class="composer">
+          <textarea id="input" placeholder="メッセージを入力（Shift+Enterで改行、Enterで送信）"></textarea>
+          <div class="actions">
+            <button class="btn ghost" id="clear">履歴クリア</button>
+            <button class="btn primary" id="send">送信 ⏎</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Side -->
+      <aside class="side">
+        <div class="panel card">
+          <div class="h">ステータス</div>
+          <div class="row"><span>ロード状況</span><span class="kbd" id="status">初期化中…</span></div>
+          <div class="row"><span>推論エンジン</span><span class="kbd">Transformers.js（ブラウザ内推論）</span></div>
+          <div class="row"><span>保存先</span><span class="kbd">IndexedDB（初回DL後は再取得なし）</span></div>
+          <div class="row"><span>ストア</span><span class="kbd" id="store-size">–</span></div>
+        </div>
+
+        <div class="panel card">
+          <div class="h">クイック操作</div>
+          <div class="row"><span>新規チャット</span><button class="btn" id="newchat">リセット</button></div>
+          <div class="row"><span>サンプルプロンプト</span><button class="btn" id="sample">貼り付け</button></div>
+        </div>
+
+        <div class="panel card">
+          <div class="h">Tips</div>
+          <div style="font-size:12px; color:var(--muted); line-height:1.7">
+            ・初回はモデルをダウンロードします（数十〜数百MB）<br/>
+            ・同じブラウザなら再ダウンロード不要です<br/>
+            ・サーバ側は静的配信だけでOKです
+          </div>
+        </div>
+      </aside>
+    </div>
+  </main>
+</div>
+
+<script type="module">
+  // ====== Setup Transformers.js ======
+  import { pipeline, env } from "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.15.0";
+
+  // 速度と互換性のためのWASMパス設定
+  env.backends.onnx.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.15.0/dist/";
+
+  // モデル（ブラウザ向けに軽量な指示追従モデルを採用）
+  const MODEL_ID = "Xenova/Qwen2.5-0.5B-Instruct"; // 小さくて速い / 日本語も可
+
+  // ====== UI refs ======
+  const logEl     = document.getElementById("log");
+  const inputEl   = document.getElementById("input");
+  const sendBtn   = document.getElementById("send");
+  const clearBtn  = document.getElementById("clear");
+  const statusEl  = document.getElementById("status");
+  const modelChip = document.getElementById("model-chip");
+  const cacheChip = document.getElementById("cache-chip");
+  const storeSize = document.getElementById("store-size");
+  const newchatBtn= document.getElementById("newchat");
+  const sampleBtn = document.getElementById("sample");
+
+  // ====== State ======
+  let generator = null;
+  let busy = false;
+  const history = []; // {role:'user'|'assistant', content:''}
+
+  // ====== Helpers ======
+  function now(){
+    const d = new Date();
+    return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  }
+  function addMsg(role, text){
+    const row = document.createElement("div");
+    row.className = `msg ${role} fade-in`;
+    row.innerHTML = `
+      <div class="avatar">${role === 'me' ? '🧑' : '🤖'}</div>
+      <div>
+        <div class="bubble">${escapeHtml(text)}</div>
+        <div class="time">${now()}</div>
+      </div>`;
+    logEl.appendChild(row);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  function escapeHtml(s){
+    return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+  }
+  function setBusy(v){
+    busy = v;
+    sendBtn.disabled = v;
+    inputEl.disabled = v;
+    statusEl.textContent = v ? "応答生成中…" : "待機中";
+  }
+  async function estimateIDB(){
+    // 簡易に「使用中／概算」を出す（正確な容量は取得しづらい）
+    try{
+      if (navigator.storage && navigator.storage.estimate){
+        const {usage, quota} = await navigator.storage.estimate();
+        const f = (n)=> (n/1024/1024).toFixed(1) + " MB";
+        storeSize.textContent = usage && quota ? `${f(usage)} / ${f(quota)}` : "–";
+      } else {
+        storeSize.textContent = "–";
+      }
+    }catch(e){ storeSize.textContent = "–"; }
+  }
+
+  // ====== Model init ======
+  statusEl.textContent = "モデル読込中…（初回は少し時間がかかります）";
+  modelChip.textContent = `Model: ${MODEL_ID}`;
+  cacheChip.textContent = "Cache: 初回DL";
+
+  // ダウンロード進捗をUI表示
+  const progress_callback = (data) => {
+    if (!data || !data.loaded || !data.total) return;
+    const pct = Math.round((data.loaded / data.total) * 100);
+    statusEl.textContent = `モデル取得中… ${pct}%`;
+  };
+
+  try{
+    generator = await pipeline("text-generation", MODEL_ID, { progress_callback });
+    statusEl.textContent = "待機中";
+    cacheChip.textContent = "Cache: 利用中";
+    estimateIDB();
+    // ウェルカム
+    addMsg('bot', "こんにちは、**samahikoGPT**です。何でも聞いてください。");
+  }catch(err){
+    console.error(err);
+    statusEl.textContent = "エラー：モデル読込に失敗しました";
+    cacheChip.textContent = "Cache: –";
+    addMsg('bot', "モデルの読み込みに失敗しました。再読込しても解決しない場合は、接続環境をご確認ください。");
+  }
+
+  // ====== Prompt formatting (シンプルな会話テンプレ) ======
+  function buildPrompt(userText){
+    // 直近数ラウンドだけ含めてトークン節約
+    const recent = history.slice(-6).map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join("\n");
+    return `You are a helpful Japanese assistant named samahikoGPT.
+- Keep answers concise and clear in Japanese.
+- Use bullet points where helpful.
+
+${recent}
+User: ${userText}
+Assistant:`;
+  }
+
+  // ====== Send flow ======
+  async function send(){
+    const text = inputEl.value.trim();
+    if (!text || busy || !generator) return;
+    inputEl.value = "";
+    addMsg('me', text);
+    history.push({role:'user', content:text});
+
+    setBusy(true);
+    try{
+      const prompt = buildPrompt(text);
+      // ノン・ストリーミング（確実性優先）
+      const out = await generator(prompt, {
+        max_new_tokens: 220,
+        temperature: 0.7,
+        top_p: 0.95,
+        do_sample: true,
+        repetition_penalty: 1.05
+      });
+
+      // transformers.jsのtext-generationは配列を返し、generated_textに全文
+      let full = (Array.isArray(out) ? out[0]?.generated_text : out?.generated_text) || "";
+      // プロンプトまで含まれるので、最後の"Assistant:"以降を抽出
+      const cut = full.split("Assistant:").pop().trim();
+      const reply = cut || full.trim() || "（応答を生成できませんでした）";
+
+      addMsg('bot', reply);
+      history.push({role:'assistant', content:reply});
+    }catch(e){
+      console.error(e);
+      addMsg('bot', "エラーが発生しました。もう一度お試しください。");
+    }finally{
+      setBusy(false);
+    }
+  }
+
+  // ====== Events ======
+  sendBtn.addEventListener("click", send);
+  inputEl.addEventListener("keydown", (e)=>{
+    if (e.key === "Enter" && !e.shiftKey){
+      e.preventDefault(); send();
+    }
+  });
+  clearBtn.addEventListener("click", ()=>{
+    logEl.innerHTML = "";
+  });
+  newchatBtn.addEventListener("click", ()=>{
+    history.length = 0;
+    logEl.innerHTML = "";
+    addMsg('bot', "新しいチャットを開始しました。何でもどうぞ。");
+  });
+  sampleBtn.addEventListener("click", ()=>{
+    inputEl.value = "このサービスの仕組み（モデルのダウンロード先やキャッシュ）を噛み砕いて説明して。";
+    inputEl.focus();
+  });
+</script>
+</body>
+</html>
